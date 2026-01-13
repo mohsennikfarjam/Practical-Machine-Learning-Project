@@ -1,0 +1,94 @@
+---
+title: "Practical Machine Learning: Prediction Assignment Writeup"
+author: "Mohsen Nikfarjam"
+date: "2026-01-12"
+output: html_document
+---
+
+## Executive Summary
+This report uses data from accelerometers on the belt, forearm, arm, and dumbbell of 6 participants to predict the manner in which they performed barbell lifts. We built a Random Forest model using 3-fold cross-validation. The model achieved high accuracy on the validation set, and we used it to predict 20 different test cases.
+
+## 1. Data Loading and Preprocessing
+First, we load the required libraries and the datasets. We handle missing values and remove variables that do not contribute to physical movement (e.g., timestamps and names).
+
+```{r setup, message=FALSE, warning=FALSE}
+library(caret)
+library(randomForest)
+
+set.seed(2025)
+
+# Load data
+train_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+training_raw <- read.csv(url(train_url), na.strings=c("NA","#DIV/0!",""))
+testing_raw <- read.csv(url(test_url), na.strings=c("NA","#DIV/0!",""))
+
+# Data Cleaning
+# 1. Remove columns with near zero variance
+nzv <- nearZeroVar(training_raw)
+training_raw <- training_raw[, -nzv]
+
+# 2. Remove columns that are mostly NA (threshold 95%)
+mostly_na <- sapply(training_raw, function(x) mean(is.na(x))) > 0.95
+training_raw <- training_raw[, mostly_na == FALSE]
+
+# 3. Remove identification variables (columns 1 to 7)
+training_raw <- training_raw[, -(1:7)]
+```
+
+## 2. Data Partitioning
+We split the training data into a Training set (70%) and a Validation set (30%).
+
+```{r partitioning}
+
+inTrain <- createDataPartition(training_raw$classe, p=0.7, list=FALSE)
+train_set <- training_raw[inTrain, ]
+val_set <- training_raw[-inTrain, ]
+```
+
+## 3. Model Building: Random Forest
+We use the Random Forest algorithm with 3-fold cross-validation. To ensure this runs efficiently on the cloud environment, we limit the number of trees to 50.
+
+```{r model, cache=TRUE}
+
+control <- trainControl(method="cv", number=3, verboseIter=FALSE)
+# Using ntree=50 for optimized performance on iPad/Cloud
+mod_rf <- train(classe ~ ., data=train_set, method="rf", trControl=control, ntree=50)
+mod_rf$finalModel
+```
+
+
+## 4. Evaluation and Expected Out-of-Sample Error
+We test the model on the validation set to estimate the accuracy.
+
+```{r validation}
+
+predict_val <- predict(mod_rf, newdata=val_set)
+conf_matrix <- confusionMatrix(predict_val, factor(val_set$classe))
+conf_matrix
+```
+
+**Results:**  
+The estimated accuracy is **`r round(conf_matrix$overall['Accuracy'], 4) * 100`%**.  
+The Expected Out-of-Sample Error is **`r round(1 - conf_matrix$overall['Accuracy'], 4) * 100`%**.
+
+
+## 5. Final Prediction for Quiz
+Applying the model to the 20 test cases.
+
+
+```{r final_prediction}
+
+# Ensure test columns match training columns
+common_cols <- names(training_raw)[names(training_raw) != "classe"]
+testing_clean <- testing_raw[, common_cols]
+
+# Predict 20 cases
+final_results <- predict(mod_rf, newdata=testing_clean)
+final_results
+```
+
+
+
+
